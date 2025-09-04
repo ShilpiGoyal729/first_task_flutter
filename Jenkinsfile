@@ -2,50 +2,40 @@ pipeline {
     agent any
 
     environment {
-        ANDROID_HOME = "/opt/android-sdk-linux"
-        PATH = "${env.PATH}:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${ANDROID_HOME}/platform-tools"
-        FLUTTER_HOME = "/opt/flutter"
+        FLUTTER_HOME = '/opt/flutter'
+        ANDROID_SDK_ROOT = '/opt/android-sdk'
+        PATH = "${FLUTTER_HOME}/bin:${ANDROID_SDK_ROOT}/tools:${ANDROID_SDK_ROOT}/platform-tools:${env.PATH}"
     }
 
     stages {
-
-        stage('Pull Docker Image') {
+        stage('Checkout SCM') {
             steps {
-                echo "Pulling Flutter Docker image with Android SDK..."
-                sh 'docker pull subosito/flutter:latest'
+                checkout scm
             }
         }
 
-        stage('Checkout Code') {
+        stage('Pull Docker Image') {
             steps {
-                checkout scm
+                script {
+                    try {
+                        sh 'docker pull cirrusci/flutter:stable'
+                    } catch (Exception e) {
+                        echo 'Failed to pull cirrusci/flutter:stable, trying subosito/flutter'
+                        sh 'docker pull subosito/flutter:latest'
+                    }
+                }
             }
         }
 
         stage('Flutter Build Inside Docker') {
             steps {
                 script {
-                    // Get Jenkins user UID/GID
-                    def uid = sh(script: 'id -u', returnStdout: true).trim()
-                    def gid = sh(script: 'id -g', returnStdout: true).trim()
-
-                    docker.image('subosito/flutter:latest').inside("-u ${uid}:${gid}") {
-                        echo "Setting up Flutter environment..."
-
-                        // Fix Git safe.directory locally
-                        sh 'git config --global --add safe.directory ${WORKSPACE} || true'
-
-                        // Accept Android licenses (non-interactive)
-                        sh 'yes | flutter doctor --android-licenses || true'
-
-                        // Flutter doctor check
-                        sh 'flutter doctor -v'
-
-                        // Get dependencies
-                        sh 'flutter pub get'
-
-                        // Build release APK
-                        sh 'flutter build apk --release'
+                    docker.image('subosito/flutter:latest').inside("--user root:root -v ${WORKSPACE}:${WORKSPACE}") {
+                        sh '''
+                            git config --global --add safe.directory ${WORKSPACE}
+                            flutter doctor
+                            flutter build apk --release
+                        '''
                     }
                 }
             }
@@ -53,14 +43,20 @@ pipeline {
 
         stage('Archive APK') {
             steps {
-                echo "Archiving generated APK..."
-                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: false
+                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/app-release.apk', allowEmptyArchive: true
             }
         }
     }
 
     post {
-        success { echo "Build succeeded!" }
-        failure { echo "Build failed. Check logs!" }
+        always {
+            cleanWs()
+        }
+        success {
+            echo 'Build and APK generation successful.'
+        }
+        failure {
+            echo 'Build failed. Please check the logs.'
+        }
     }
 }
