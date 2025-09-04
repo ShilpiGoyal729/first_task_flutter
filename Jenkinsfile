@@ -1,12 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        FLUTTER_HOME = '/opt/flutter'
-        ANDROID_SDK_ROOT = '/opt/android-sdk'
-        PATH = "${FLUTTER_HOME}/bin:${ANDROID_SDK_ROOT}/tools:${ANDROID_SDK_ROOT}/platform-tools:${env.PATH}"
-    }
-
     stages {
         stage('Checkout SCM') {
             steps {
@@ -16,24 +10,18 @@ pipeline {
 
         stage('Pull Docker Image') {
             steps {
-                script {
-                    try {
-                        sh 'docker pull cirrusci/flutter:stable'
-                    } catch (Exception e) {
-                        echo 'Failed to pull cirrusci/flutter:stable, trying subosito/flutter'
-                        sh 'docker pull subosito/flutter:latest'
-                    }
-                }
+                sh 'docker pull cirrusci/flutter:stable'
             }
         }
 
         stage('Flutter Build Inside Docker') {
             steps {
                 script {
-                    docker.image('subosito/flutter:latest').inside("--user root:root -v ${WORKSPACE}:${WORKSPACE}") {
+                    docker.image('cirrusci/flutter:stable').inside("--user root:root -v ${WORKSPACE}:${WORKSPACE}") {
                         sh '''
                             git config --global --add safe.directory ${WORKSPACE}
                             flutter doctor
+                            flutter pub get
                             flutter build apk --release
                         '''
                     }
@@ -56,7 +44,7 @@ pipeline {
             echo 'Build and APK generation successful.'
         }
         failure {
-            echo 'Build failed. Please check the logs.'
+            echo 'Build failed. Check logs.'
         }
     }
 }
