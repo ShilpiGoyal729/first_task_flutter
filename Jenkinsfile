@@ -1,29 +1,41 @@
 pipeline {
     agent any
 
+    environment {
+        FLUTTER_IMAGE = 'cirrusci/flutter:stable'
+    }
+
     stages {
+
         stage('Checkout SCM') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/savio_branch_getx_fix']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/ShilpiGoyal729/first_task_flutter.git'
+                    ]]
+                ])
             }
         }
 
         stage('Pull Docker Image') {
             steps {
-                sh 'docker pull cirrusci/flutter:stable'
+                script {
+                    echo "Pulling Flutter Docker Image..."
+                    sh "docker pull ${FLUTTER_IMAGE}"
+                }
             }
         }
 
         stage('Flutter Build Inside Docker') {
             steps {
                 script {
-                    docker.image('cirrusci/flutter:stable').inside("--user root:root -v ${WORKSPACE}:${WORKSPACE}") {
-                        sh '''
-                            git config --global --add safe.directory ${WORKSPACE}
-                            flutter doctor
+                    echo "Building Flutter project inside Docker..."
+                    docker.image(FLUTTER_IMAGE).inside {
+                        sh """
                             flutter pub get
                             flutter build apk --release
-                        '''
+                        """
                     }
                 }
             }
@@ -31,7 +43,7 @@ pipeline {
 
         stage('Archive APK') {
             steps {
-                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/app-release.apk', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: true
             }
         }
     }
@@ -39,12 +51,13 @@ pipeline {
     post {
         always {
             cleanWs()
+            echo "Workspace cleaned."
         }
         success {
-            echo 'Build and APK generation successful.'
+            echo "Build completed successfully!"
         }
         failure {
-            echo 'Build failed. Check logs.'
+            echo "Build failed. Check logs."
         }
     }
 }
