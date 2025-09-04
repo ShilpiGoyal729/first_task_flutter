@@ -1,13 +1,8 @@
 pipeline {
     agent any
 
-    environment {
-        FLUTTER_GIT_URL = 'https://github.com/flutter/flutter.git' 
-        CHROME_EXECUTABLE = '/usr/bin/google-chrome'               
-    }
-
     options {
-        timeout(time: 60, unit: 'MINUTES') // prevents ClosedByInterruptException for long builds
+        timeout(time: 60, unit: 'MINUTES') // Prevents long-running interruption
     }
 
     stages {
@@ -27,37 +22,32 @@ pipeline {
             }
         }
 
-        stage('Setup Flutter') {
+        stage('Flutter Build Inside Docker') {
             steps {
-                echo "Verifying Flutter environment..."
-                sh 'flutter channel stable'
-                sh 'flutter upgrade'
-                sh 'flutter doctor -v || true' // allow warnings, continue pipeline
+                script {
+                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside {
+                        echo "Setting up Flutter..."
+                        sh 'flutter channel stable'
+                        sh 'flutter upgrade'
+                        sh 'flutter doctor -v || true'  // ignore warnings, continue build
+
+                        echo "Installing dependencies..."
+                        sh 'flutter pub get'
+                        sh 'flutter pub upgrade'
+
+                        echo "Building APK..."
+                        sh 'flutter build apk --release'
+                    }
+                }
             }
         }
 
-        stage('Install Dependencies') {
-            steps {
-                echo "Installing Flutter dependencies..."
-                sh 'flutter pub get'
-                sh 'flutter pub upgrade'
-            }
-        }
-
-        stage('Build APK') {
-            steps {
-                echo "Building Flutter APK..."
-                sh 'flutter build apk --release'
-            }
-        }
-
-        stage('Archive Artifact') {
+        stage('Archive APK') {
             steps {
                 echo "Archiving APK artifacts..."
                 archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: false
             }
         }
-
     }
 
     post {
