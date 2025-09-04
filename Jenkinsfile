@@ -1,7 +1,6 @@
 pipeline {
     agent any
     environment {
-        // Optional: Add environment variables if needed
         ANDROID_HOME = "/opt/android-sdk-linux"
         PATH = "${env.PATH}:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${ANDROID_HOME}/platform-tools"
     }
@@ -26,10 +25,8 @@ pipeline {
         stage('Flutter Build Inside Docker') {
             steps {
                 script {
-                    // Run Flutter commands inside Docker
-                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside("-u 1000:1000 -v ${WORKSPACE}:${WORKSPACE}") {
+                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside("-u 1000:1000") {
                         echo "Setting up Flutter environment..."
-                        // Fix Git dubious ownership issue
                         sh 'git config --global --add safe.directory /sdks/flutter'
 
                         // Verify Flutter
