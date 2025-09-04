@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Adjust Android SDK path inside Docker if needed
         ANDROID_HOME = "/opt/android-sdk-linux"
         PATH = "${env.PATH}:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${ANDROID_HOME}/platform-tools"
     }
@@ -12,16 +11,12 @@ pipeline {
         stage('Pull Flutter Docker Image') {
             steps {
                 echo "Pulling Flutter Docker image..."
-                sh '''
-                    docker pull ghcr.io/cirruslabs/flutter:stable
-                    docker images | grep flutter
-                '''
+                sh 'docker pull ghcr.io/cirruslabs/flutter:stable'
             }
         }
 
         stage('Checkout Code') {
             steps {
-                echo "Checking out source code..."
                 checkout scm
             }
         }
@@ -29,23 +24,27 @@ pipeline {
         stage('Flutter Build Inside Docker') {
             steps {
                 script {
-                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside("-u 1000:1000") {
-                        echo "Setting up Flutter environment..."
+                    // Use Jenkins UID:GID to avoid permissions issues
+                    def uid = sh(script: 'id -u', returnStdout: true).trim()
+                    def gid = sh(script: 'id -g', returnStdout: true).trim()
 
-                        // Fix git ownership issue inside Docker
+                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside("-u ${uid}:${gid}") {
+                        echo "Configuring Flutter environment..."
+
+                        // Fix Git ownership
                         sh 'git config --global --add safe.directory /sdks/flutter'
 
-                        // Accept Android licenses to prevent build failures
+                        // Accept Android licenses to avoid build hang
                         sh 'yes | flutter doctor --android-licenses || true'
 
-                        // Check Flutter installation
+                        // Check Flutter setup
                         sh 'flutter --version'
                         sh 'flutter doctor -v'
 
                         // Get dependencies
                         sh 'flutter pub get'
 
-                        // Build release APK
+                        // Build APK release
                         sh 'flutter build apk --release'
                     }
                 }
@@ -54,18 +53,13 @@ pipeline {
 
         stage('Archive APK') {
             steps {
-                echo "Archiving the APK..."
                 archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: false
             }
         }
     }
 
     post {
-        success {
-            echo "✅ Pipeline finished successfully!"
-        }
-        failure {
-            echo "❌ Pipeline failed! Check logs."
-        }
+        success { echo "✅ Build succeeded!" }
+        failure { echo "❌ Build failed. Check logs." }
     }
 }
