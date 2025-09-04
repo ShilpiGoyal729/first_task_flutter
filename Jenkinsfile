@@ -1,17 +1,18 @@
 pipeline {
     agent any
-
-    options {
-        timeout(time: 60, unit: 'MINUTES') // Prevents long-running interruption
+    environment {
+        // Optional: Add environment variables if needed
+        ANDROID_HOME = "/opt/android-sdk-linux"
+        PATH = "${env.PATH}:${ANDROID_HOME}/tools:${ANDROID_HOME}/tools/bin:${ANDROID_HOME}/platform-tools"
     }
-
     stages {
-
         stage('Pull Flutter Docker Image') {
             steps {
                 echo "Pulling Flutter Docker image..."
-                sh 'docker pull ghcr.io/cirruslabs/flutter:stable'
-                sh 'docker images | grep flutter'
+                sh '''
+                    docker pull ghcr.io/cirruslabs/flutter:stable
+                    docker images | grep flutter
+                '''
             }
         }
 
@@ -25,17 +26,20 @@ pipeline {
         stage('Flutter Build Inside Docker') {
             steps {
                 script {
-                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside {
-                        echo "Setting up Flutter..."
-                        sh 'flutter channel stable'
-                        sh 'flutter upgrade'
-                        sh 'flutter doctor -v || true'  // ignore warnings, continue build
+                    // Run Flutter commands inside Docker
+                    docker.image('ghcr.io/cirruslabs/flutter:stable').inside("-u 1000:1000 -v ${WORKSPACE}:${WORKSPACE}") {
+                        echo "Setting up Flutter environment..."
+                        // Fix Git dubious ownership issue
+                        sh 'git config --global --add safe.directory /sdks/flutter'
 
-                        echo "Installing dependencies..."
+                        // Verify Flutter
+                        sh 'flutter --version'
+                        sh 'flutter doctor -v'
+
+                        // Get dependencies
                         sh 'flutter pub get'
-                        sh 'flutter pub upgrade'
 
-                        echo "Building APK..."
+                        // Build APK
                         sh 'flutter build apk --release'
                     }
                 }
@@ -44,18 +48,18 @@ pipeline {
 
         stage('Archive APK') {
             steps {
-                echo "Archiving APK artifacts..."
-                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: false
+                echo "Archiving the APK..."
+                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: true
             }
         }
     }
 
     post {
         success {
-            echo '✅ Pipeline finished successfully!'
+            echo "✅ Pipeline finished successfully!"
         }
         failure {
-            echo '❌ Pipeline failed! Check logs.'
+            echo "❌ Pipeline failed! Check logs."
         }
     }
 }
