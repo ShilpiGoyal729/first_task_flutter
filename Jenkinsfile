@@ -31,9 +31,25 @@ pipeline {
             steps {
                 script {
                     echo "Building Flutter project inside Docker..."
-                    docker.image(FLUTTER_IMAGE).inside {
+                    // Mount workspace automatically, set working directory
+                    docker.image(FLUTTER_IMAGE).inside("-w ${env.WORKSPACE}") {
                         sh """
+                            echo "Flutter Version:"
+                            flutter --version
+                            echo "Flutter Doctor:"
+                            flutter doctor -v
+                            echo "Current Directory:"
+                            pwd
+                            echo "Listing files:"
+                            ls -la
+
+                            echo "Accepting Android licenses..."
+                            yes | flutter doctor --android-licenses
+
+                            echo "Running flutter pub get..."
                             flutter pub get
+
+                            echo "Building APK..."
                             flutter build apk --release
                         """
                     }
@@ -43,6 +59,7 @@ pipeline {
 
         stage('Archive APK') {
             steps {
+                echo "Archiving APK..."
                 archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: true
             }
         }
