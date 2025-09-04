@@ -7,6 +7,13 @@ pipeline {
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'savio_branch_getx_fix',
+                    url: 'https://github.com/ShilpiGoyal729/first_task_flutter.git'
+            }
+        }
+
         stage('Dependencies') {
             steps {
                 sh 'flutter pub get'
