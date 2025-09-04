@@ -1,19 +1,12 @@
 pipeline {
-    agent any
-
-    environment {
-        // Flutter SDK path (make sure Jenkins has Flutter installed here)
-        FLUTTER_HOME = "/var/lib/jenkins/flutter"
-        PATH = "$FLUTTER_HOME/bin:$PATH"
+    agent {
+        docker {
+            image 'cirrusci/flutter:latest'   // Flutter pre-installed
+            args '-u root:root'               // run as root inside container
+        }
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'savio_branch_getx_fix', url: 'https://github.com/ShilpiGoyal729/first_task_flutter.git'
-            }
-        }
-
         stage('Dependencies') {
             steps {
                 sh 'flutter pub get'
@@ -34,11 +27,8 @@ pipeline {
     }
 
     post {
-        success {
-            echo "✅ Build and APK generation successful!"
-        }
-        failure {
-            echo "❌ Build failed. Check logs."
+        always {
+            echo "✅ Build complete (or failed). Check artifacts."
         }
     }
 }
