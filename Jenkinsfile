@@ -1,54 +1,53 @@
 pipeline {
     agent any
 
-    stages {
-        stage('Checkout SCM') {
-            steps {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: '*/savio_branch_getx_fix']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/ShilpiGoyal729/first_task_flutter.git'
-                    ]]
-                ])
-            }
-        }
+    environment {
+        ANDROID_HOME = "${env.WORKSPACE}/android-sdk"
+        PATH = "${env.WORKSPACE}/flutter/bin:${env.ANDROID_HOME}/cmdline-tools/latest/bin:${env.ANDROID_HOME}/platform-tools:${env.ANDROID_HOME}/build-tools/34.0.0:${env.PATH}"
+    }
 
+    stages {
         stage('Setup Flutter') {
             steps {
                 sh '''
-                  echo "Cleaning any old Flutter SDK..."
+                  # Remove old Flutter
                   rm -rf flutter
 
-                  echo "Cloning Flutter SDK (stable branch)..."
+                  # Clone Flutter stable
                   git clone https://github.com/flutter/flutter.git -b stable
-
-                  echo "Adding Flutter to PATH..."
                   export PATH=$PWD/flutter/bin:$PATH
-
-                  echo "Flutter Version:"
                   flutter --version
-
-                  echo "Flutter Doctor:"
-                  flutter doctor -v
                 '''
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Setup Android SDK (Local)') {
+            steps {
+                sh '''
+                  # Clean previous SDK
+                  rm -rf $ANDROID_HOME
+                  mkdir -p $ANDROID_HOME/cmdline-tools
+
+                  # Download command-line tools
+                  curl -o sdk.zip https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+                  unzip -q sdk.zip -d $ANDROID_HOME/cmdline-tools
+                  mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+                  rm sdk.zip
+
+                  # Accept licenses
+                  yes | sdkmanager --licenses
+
+                  # Install required components
+                  sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+                '''
+            }
+        }
+
+        stage('Build Flutter APK') {
             steps {
                 sh '''
                   export PATH=$PWD/flutter/bin:$PATH
-                  echo "Running flutter pub get..."
                   flutter pub get
-                '''
-            }
-        }
-
-        stage('Build APK') {
-            steps {
-                sh '''
-                  export PATH=$PWD/flutter/bin:$PATH
-                  echo "Building APK..."
                   flutter build apk --release
                 '''
             }
@@ -56,7 +55,6 @@ pipeline {
 
         stage('Archive APK') {
             steps {
-                echo "Archiving APK..."
                 archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: true
             }
         }
@@ -65,13 +63,6 @@ pipeline {
     post {
         always {
             cleanWs()
-            echo "Workspace cleaned."
-        }
-        success {
-            echo "✅ Build completed successfully!"
-        }
-        failure {
-            echo "❌ Build failed. Check logs."
         }
     }
 }
