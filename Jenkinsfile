@@ -1,12 +1,7 @@
 pipeline {
     agent any
 
-    environment {
-        FLUTTER_IMAGE = 'cirrusci/flutter:stable'
-    }
-
     stages {
-
         stage('Checkout SCM') {
             steps {
                 checkout([$class: 'GitSCM',
@@ -18,42 +13,44 @@ pipeline {
             }
         }
 
-        stage('Pull Docker Image') {
+        stage('Setup Flutter') {
             steps {
-                script {
-                    echo "Pulling Flutter Docker Image..."
-                    sh "docker pull ${FLUTTER_IMAGE}"
-                }
+                sh '''
+                  echo "Cleaning any old Flutter SDK..."
+                  rm -rf flutter
+
+                  echo "Cloning Flutter SDK (stable branch)..."
+                  git clone https://github.com/flutter/flutter.git -b stable
+
+                  echo "Adding Flutter to PATH..."
+                  export PATH=$PWD/flutter/bin:$PATH
+
+                  echo "Flutter Version:"
+                  flutter --version
+
+                  echo "Flutter Doctor:"
+                  flutter doctor -v
+                '''
             }
         }
 
-        stage('Flutter Build Inside Docker') {
+        stage('Install Dependencies') {
             steps {
-                script {
-                    echo "Building Flutter project inside Docker..."
-                    // Mount workspace automatically, set working directory
-                    docker.image(FLUTTER_IMAGE).inside("-w ${env.WORKSPACE}") {
-                        sh """
-                            echo "Flutter Version:"
-                            flutter --version
-                            echo "Flutter Doctor:"
-                            flutter doctor -v
-                            echo "Current Directory:"
-                            pwd
-                            echo "Listing files:"
-                            ls -la
+                sh '''
+                  export PATH=$PWD/flutter/bin:$PATH
+                  echo "Running flutter pub get..."
+                  flutter pub get
+                '''
+            }
+        }
 
-                            echo "Accepting Android licenses..."
-                            yes | flutter doctor --android-licenses
-
-                            echo "Running flutter pub get..."
-                            flutter pub get
-
-                            echo "Building APK..."
-                            flutter build apk --release
-                        """
-                    }
-                }
+        stage('Build APK') {
+            steps {
+                sh '''
+                  export PATH=$PWD/flutter/bin:$PATH
+                  echo "Building APK..."
+                  flutter build apk --release
+                '''
             }
         }
 
@@ -71,10 +68,10 @@ pipeline {
             echo "Workspace cleaned."
         }
         success {
-            echo "Build completed successfully!"
+            echo "✅ Build completed successfully!"
         }
         failure {
-            echo "Build failed. Check logs."
+            echo "❌ Build failed. Check logs."
         }
     }
 }
