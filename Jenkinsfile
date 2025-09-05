@@ -1,45 +1,45 @@
 pipeline {
     agent any
 
-    environment {
-        ANDROID_HOME = "/opt/android-sdk"
-        PATH = "$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-    }
-
     stages {
+        stage('Checkout SCM') {
+            steps {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/savio_branch_getx_fix']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/ShilpiGoyal729/first_task_flutter.git'
+                    ]]
+                ])
+            }
+        }
+
         stage('Setup Flutter') {
             steps {
                 sh '''
-                  # Remove old Flutter if exists
+                  echo "Cleaning any old Flutter SDK..."
                   rm -rf flutter
-                  
-                  # Download Flutter SDK
+
+                  echo "Cloning Flutter SDK (stable branch)..."
                   git clone https://github.com/flutter/flutter.git -b stable
+
+                  echo "Adding Flutter to PATH..."
                   export PATH=$PWD/flutter/bin:$PATH
-                  
+
+                  echo "Flutter Version:"
                   flutter --version
+
+                  echo "Flutter Doctor:"
+                  flutter doctor -v
                 '''
             }
         }
 
-        stage('Setup Android SDK') {
+        stage('Install Dependencies') {
             steps {
                 sh '''
-                  # Install Android SDK if not already installed
-                  mkdir -p /opt/android-sdk/cmdline-tools
-                  cd /opt/android-sdk/cmdline-tools
-
-                  if [ ! -d "latest" ]; then
-                    curl -s https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -o cmdline-tools.zip
-                    unzip -q cmdline-tools.zip -d .
-                    mv cmdline-tools latest
-                  fi
-
-                  # Accept licenses
-                  yes | sdkmanager --licenses
-                  
-                  # Install platforms & build-tools
-                  sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+                  export PATH=$PWD/flutter/bin:$PATH
+                  echo "Running flutter pub get..."
+                  flutter pub get
                 '''
             }
         }
@@ -48,7 +48,7 @@ pipeline {
             steps {
                 sh '''
                   export PATH=$PWD/flutter/bin:$PATH
-                  flutter pub get
+                  echo "Building APK..."
                   flutter build apk --release
                 '''
             }
@@ -56,8 +56,22 @@ pipeline {
 
         stage('Archive APK') {
             steps {
+                echo "Archiving APK..."
                 archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: true
             }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+            echo "Workspace cleaned."
+        }
+        success {
+            echo "✅ Build completed successfully!"
+        }
+        failure {
+            echo "❌ Build failed. Check logs."
         }
     }
 }
