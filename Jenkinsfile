@@ -2,52 +2,79 @@ pipeline {
     agent any
 
     environment {
-        ANDROID_HOME = "${env.WORKSPACE}/android-sdk"
-        PATH = "${env.WORKSPACE}/flutter/bin:${env.ANDROID_HOME}/cmdline-tools/latest/bin:${env.ANDROID_HOME}/platform-tools:${env.ANDROID_HOME}/build-tools/34.0.0:${env.PATH}"
+        TOOLS_DIR = "${WORKSPACE}/tools"
+        PATH = "${WORKSPACE}/flutter/bin:${TOOLS_DIR}:${WORKSPACE}/android-sdk/cmdline-tools/latest/bin:${WORKSPACE}/android-sdk/platform-tools:${PATH}"
+        ANDROID_HOME = "${WORKSPACE}/android-sdk"
     }
 
     stages {
+        stage('Setup Tools') {
+            steps {
+                sh '''
+                  mkdir -p $TOOLS_DIR
+
+                  # Download portable curl if not exists
+                  if [ ! -f "$TOOLS_DIR/curl" ]; then
+                    echo "Downloading portable curl..."
+                    wget -O $TOOLS_DIR/curl https://github.com/moparisthebest/static-curl/releases/download/v7.87.0/curl-amd64 || true
+                    chmod +x $TOOLS_DIR/curl
+                  fi
+
+                  # Download portable unzip if not exists
+                  if [ ! -f "$TOOLS_DIR/unzip" ]; then
+                    echo "Downloading portable unzip..."
+                    wget -O $TOOLS_DIR/unzip https://github.com/jeremysimmons/standalone-unzip/releases/download/v6.0/unzip-linux-x86_64 || true
+                    chmod +x $TOOLS_DIR/unzip
+                  fi
+
+                  $TOOLS_DIR/curl --version || true
+                  $TOOLS_DIR/unzip -v || true
+                '''
+            }
+        }
+
         stage('Setup Flutter') {
             steps {
                 sh '''
-                  # Remove old Flutter
-                  rm -rf flutter
+                  if [ ! -d "${WORKSPACE}/flutter" ]; then
+                    echo "Downloading Flutter SDK..."
+                    git clone https://github.com/flutter/flutter.git -b stable
+                  fi
 
-                  # Clone Flutter stable
-                  git clone https://github.com/flutter/flutter.git -b stable
-                  export PATH=$PWD/flutter/bin:$PATH
-                  flutter --version
+                  flutter doctor || true
                 '''
             }
         }
 
-        stage('Setup Android SDK (Local)') {
+        stage('Setup Android SDK') {
             steps {
                 sh '''
-                  # Clean previous SDK
-                  rm -rf $ANDROID_HOME
-                  mkdir -p $ANDROID_HOME/cmdline-tools
+                  if [ ! -d "${ANDROID_HOME}" ]; then
+                    echo "Downloading Android SDK..."
+                    mkdir -p ${ANDROID_HOME}/cmdline-tools
+                    $TOOLS_DIR/curl -s https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline-tools.zip
+                    $TOOLS_DIR/unzip cmdline-tools.zip -d ${ANDROID_HOME}/cmdline-tools
+                    mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest
+                  fi
 
-                  # Download command-line tools
-                  curl -o sdk.zip https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
-                  unzip -q sdk.zip -d $ANDROID_HOME/cmdline-tools
-                  mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-                  rm sdk.zip
-
-                  # Accept licenses
-                  yes | sdkmanager --licenses
-
-                  # Install required components
-                  sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+                  yes | sdkmanager --licenses || true
+                  sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973"
                 '''
             }
         }
 
-        stage('Build Flutter APK') {
+        stage('Get Dependencies') {
             steps {
                 sh '''
-                  export PATH=$PWD/flutter/bin:$PATH
                   flutter pub get
+                '''
+            }
+        }
+
+        stage('Build APK') {
+            steps {
+                sh '''
+                  echo "Building release APK..."
                   flutter build apk --release
                 '''
             }
@@ -55,7 +82,7 @@ pipeline {
 
         stage('Archive APK') {
             steps {
-                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/*.apk', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'build/app/outputs/flutter-apk/app-release.apk', fingerprint: true
             }
         }
     }
